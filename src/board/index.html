@@ -50,6 +50,7 @@
       opacity: 0.5;
       cursor: default;
     }
+    [hidden] { display: none !important; }
     #keypad {
       display: flex;
       gap: 0.5rem;
@@ -72,6 +73,48 @@
     }
     #keypad button:active {
       background: #f1f4f3;
+    }
+    #ringback-banner {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 18px 40px;
+      background: var(--accent);
+      color: var(--accent-ink);
+      font-size: 20px;
+      font-weight: 600;
+    }
+    #ringback-banner button {
+      font: inherit;
+      font-size: 16px;
+      border-radius: 8px;
+      border: none;
+      padding: 10px 22px;
+      cursor: pointer;
+    }
+    #answer {
+      background: var(--accent-ink);
+      color: var(--accent);
+    }
+    #decline {
+      background: transparent;
+      color: var(--accent-ink);
+      border: 1px solid rgba(255, 255, 255, 0.6);
+    }
+    #ringback-who { flex: 1; }
+    .ring-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent-ink);
+      animation: ring-pulse 1s ease-in-out infinite;
+    }
+    @keyframes ring-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.35; transform: scale(0.75); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .ring-dot { animation: none; }
     }
     #call-status {
       font-size: 13px;
@@ -169,6 +212,15 @@
   </style>
 </head>
 <body>
+  <!-- The ring-back is the moment the demo is built around, so it announces itself:
+       a banner, a ring tone and a decision, never a call that answers itself. -->
+  <div id="ringback-banner" hidden>
+    <span class="ring-dot" aria-hidden="true"></span>
+    <span id="ringback-who">Ringing back</span>
+    <button id="answer">Answer</button>
+    <button id="decline">Decline</button>
+  </div>
+
   <header>
     <h1>Ringback</h1>
     <div>

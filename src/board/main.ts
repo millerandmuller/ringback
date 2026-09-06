@@ -25,6 +25,10 @@ interface Message {
   updated_at: string;
 }
 
+// If nobody clicks Answer, pick the ring-back up anyway rather than let Vonage
+// drop it — a live demo must not lose the reply to a missed click.
+const AUTO_ANSWER_AFTER_MS = 15_000;
+
 let people: Person[] = [];
 let messages: Message[] = [];
 
@@ -135,7 +139,10 @@ function escapeHtml(value: string): string {
   return div.innerHTML;
 }
 
+let lastReplyFrom: string | null = null;
+
 function upsertMessage(message: Message): void {
+  if (message.state === "replied") lastReplyFrom = personName(message.to_person_id);
   const index = messages.findIndex((m) => m.id === message.id);
   if (index === -1) {
     messages.unshift(message);
@@ -161,11 +168,100 @@ function connectEvents(): void {
   };
 }
 
+/**
+ * A generated ring tone (the North American 440 + 480 Hz pair) rather than an audio
+ * file: no asset to load, nothing to fail on a conference network. The page has
+ * always had a click before this plays, so autoplay policy is satisfied.
+ */
+function createRinger() {
+  let context: AudioContext | null = null;
+  let timer: number | null = null;
+
+  const burst = () => {
+    if (!context) return;
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(0.0001, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.05);
+    gain.gain.setValueAtTime(0.12, context.currentTime + 1.0);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 1.2);
+    gain.connect(context.destination);
+    for (const frequency of [440, 480]) {
+      const oscillator = context.createOscillator();
+      oscillator.frequency.value = frequency;
+      oscillator.connect(gain);
+      oscillator.start();
+      oscillator.stop(context.currentTime + 1.25);
+    }
+  };
+
+  return {
+    start(): void {
+      if (timer !== null) return;
+      try {
+        context = context ?? new AudioContext();
+        void context.resume();
+        burst();
+        timer = window.setInterval(burst, 2000);
+      } catch (error) {
+        // A blocked AudioContext must never cost the manager the call itself.
+        console.error(error);
+      }
+    },
+    stop(): void {
+      if (timer !== null) window.clearInterval(timer);
+      timer = null;
+    },
+  };
+}
+
 async function setUpCallButton(): Promise<void> {
   const client = new VonageClient();
   const keypad = document.querySelector<HTMLDivElement>("#keypad")!;
   const hangupButton = document.querySelector<HTMLButtonElement>("#hangup")!;
+  const banner = document.querySelector<HTMLDivElement>("#ringback-banner")!;
+  const ringbackWhoEl = document.querySelector<HTMLSpanElement>("#ringback-who")!;
+  const answerButton = document.querySelector<HTMLButtonElement>("#answer")!;
+  const declineButton = document.querySelector<HTMLButtonElement>("#decline")!;
+  const ringer = createRinger();
   let activeCallId: string | null = null;
+  let ringingCallId: string | null = null;
+  let autoAnswerTimer: number | null = null;
+
+  const stopRinging = () => {
+    ringer.stop();
+    banner.hidden = true;
+    ringingCallId = null;
+    if (autoAnswerTimer !== null) window.clearTimeout(autoAnswerTimer);
+    autoAnswerTimer = null;
+  };
+
+  const answerRingback = async () => {
+    const callId = ringingCallId;
+    if (!callId) return;
+    stopRinging();
+    activeCallId = callId;
+    callStatusEl.textContent = "On the call. Listening to the reply.";
+    try {
+      await client.answer(callId);
+    } catch (error) {
+      console.error(error);
+      callStatusEl.textContent = "Could not answer. Check the console.";
+    }
+  };
+
+  answerButton.addEventListener("click", () => void answerRingback());
+  declineButton.addEventListener("click", async () => {
+    const callId = ringingCallId;
+    stopRinging();
+    callStatusEl.textContent = "Ring-back declined. The reply is on the board.";
+    if (callId) {
+      try {
+        await client.reject(callId);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  });
 
   // A browser call has no phone keypad, but the read-back and the flagged-send gate ask
   // for a digit — the on-screen keypad sends real DTMF into the live call.
@@ -193,15 +289,21 @@ async function setUpCallButton(): Promise<void> {
     }
   });
 
-  client.on("callInvite", async (callId: string) => {
-    // The ring-back leg calls the manager's app user directly; answer it
-    // automatically so the reply is heard without an extra click.
-    activeCallId = callId;
-    callStatusEl.textContent = "Reply coming in...";
-    await client.answer(callId);
+  client.on("callInvite", (callId: string) => {
+    // The ring-back is the point of the product: it rings, it says who is calling,
+    // and the manager decides. Auto-answering made the reply arrive as silence.
+    ringingCallId = callId;
+    ringbackWhoEl.textContent = lastReplyFrom ? `${lastReplyFrom} is calling back` : "Ringback is calling";
+    banner.hidden = false;
+    callStatusEl.textContent = "Ringing back...";
+    ringer.start();
+    // Safety net for a live demo: an unanswered invite would be dropped by Vonage,
+    // so pick it up after a while rather than lose the reply on a missed click.
+    autoAnswerTimer = window.setTimeout(() => void answerRingback(), AUTO_ANSWER_AFTER_MS);
   });
 
   client.on("callHangup", (callId: string) => {
+    if (callId === ringingCallId) stopRinging();
     if (callId !== activeCallId) return;
     activeCallId = null;
     showKeypad(false);
