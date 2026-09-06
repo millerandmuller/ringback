@@ -1,4 +1,4 @@
-import type { Store } from "../db/store.js";
+import type { Message, Store } from "../db/store.js";
 import { isSupportedLanguage, unsupportedLanguageExplanation, type SupportedLanguage } from "../languages.js";
 import { translateMessage, translateWithDeadline, type TranslateOutcome } from "../translate.js";
 import { publishMessageUpdate } from "../events.js";
@@ -11,6 +11,7 @@ import {
   captureMessageByRecordingNcco,
   captureMessageNcco,
   captureNameNcco,
+  confirmFlaggedSendNcco,
   directorySetupMissingNcco,
   nameKeypadListNcco,
   noSilenceCaughtNcco,
@@ -35,6 +36,7 @@ interface CaptureState {
   recipientId?: number;
   messageId?: number;
   forceEnglish?: boolean;
+  flaggedSendConfirmed?: boolean;
 }
 const captureStates = new Map<string, CaptureState>();
 
@@ -66,11 +68,21 @@ function dtmfDigits(body: InputBody): string | null {
 
 export function handleAnswer(store: Store, body: { uuid: string; conversation_uuid: string }) {
   const manager = store.findPersonByAppUser("manager");
+  // No DB write happens on this path, so it is trivially safe to repeat on a
+  // redelivered answer webhook — never gated behind idempotency.
   if (!manager) return directorySetupMissingNcco();
 
-  store.createCall({ uuid: body.uuid, message_id: null, direction: "inbound", leg: "capture", status: "started" });
-  store.recordConsent(body.uuid, "en-US");
-  captureStates.set(body.uuid, { managerId: manager.id });
+  // Idempotent by construction rather than by an external once()-style guard:
+  // a redelivered answer webhook for a call already answered must not insert
+  // calls.uuid twice (it is a primary key), but should still get the same
+  // opening NCCO back, not an empty body.
+  if (!store.getCall(body.uuid)) {
+    store.createCall({ uuid: body.uuid, message_id: null, direction: "inbound", leg: "capture", status: "started" });
+    store.recordConsent(body.uuid, "en-US");
+  }
+  if (!captureStates.has(body.uuid)) {
+    captureStates.set(body.uuid, { managerId: manager.id });
+  }
 
   const directoryNames = store.listPeople().filter((p) => p.id !== manager.id).map((p) => p.name);
   return captureNameNcco(directoryNames);
@@ -186,6 +198,13 @@ export async function handleMessageTranscription(
 // --- translation + read-back ---------------------------------------------
 
 async function startTranslationForMessage(store: Store, state: CaptureState, sourceText: string) {
+  // A fresh message capture starts a fresh confirmation cycle — this flag
+  // must never carry over from a previous message on the same call (today
+  // that only matters for a re-record before ever sending, since a
+  // successful send ends the call's state entirely, but resetting here keeps
+  // that safety explicit rather than incidental).
+  state.flaggedSendConfirmed = false;
+
   const recipient = store.getPerson(state.recipientId!)!;
   const targetLang = state.forceEnglish ? "en-US" : recipient.language;
 
@@ -261,55 +280,77 @@ function scheduleTranslationRetry(store: Store, messageId: number, attemptsLeft 
     return;
   }
   setTimeout(async () => {
-    const message = store.getMessage(messageId);
-    if (!message || message.state !== "translation pending") return;
-    const outcome = await translateMessage({
-      sourceText: message.source_text!,
-      sourceLang: message.source_lang,
-      targetLang: message.target_lang,
-    });
-    if (outcome.ok) {
-      applyTranslation(store, messageId, outcome);
-    } else {
-      scheduleTranslationRetry(store, messageId, attemptsLeft - 1);
+    try {
+      const message = store.getMessage(messageId);
+      if (!message || message.state !== "translation pending") return;
+      const outcome = await translateMessage({
+        sourceText: message.source_text!,
+        sourceLang: message.source_lang,
+        targetLang: message.target_lang,
+      });
+      if (outcome.ok) {
+        applyTranslation(store, messageId, outcome);
+      } else {
+        scheduleTranslationRetry(store, messageId, attemptsLeft - 1);
+      }
+    } catch (error) {
+      // translateMessage() already catches its own errors and returns a typed
+      // outcome; this only guards against something unexpected (e.g. a store
+      // write failure) so one bad attempt can never crash the shared process.
+      console.error(`Translation retry failed for message ${messageId}:`, error);
+      const message = store.getMessage(messageId);
+      if (message && message.state === "translation pending") {
+        store.setMessageState(messageId, "failed");
+        publishMessageUpdate(store.getMessage(messageId)!);
+      }
     }
   }, TRANSLATION_RETRY_INTERVAL_MS).unref();
 }
 
 // --- capture leg: read-back (1 send / 2 re-record / 3 preview) -----------
 
+/** Places the deliver call and marks the message sent. Shared by the direct
+ *  send path (unflagged) and the confirm-flagged path (F2 / dossier T-01). */
+async function sendMessage(store: Store, uuid: string, message: Message) {
+  const worker = store.getPerson(message.to_person_id)!;
+  const manager = store.getPerson(message.from_person_id)!;
+  if (!worker.phone) {
+    store.setMessageState(message.id, "failed");
+    publishMessageUpdate(store.getMessage(message.id)!);
+    return sentConfirmationNcco();
+  }
+  const deliverCall = await placeDeliverCall({
+    toPhone: worker.phone,
+    senderName: manager.name,
+    targetLang: message.target_lang as SupportedLanguage,
+    targetText: message.target_text!,
+  });
+  store.createCall({
+    uuid: deliverCall.uuid,
+    message_id: message.id,
+    direction: "outbound",
+    leg: "deliver",
+    status: "started",
+  });
+  store.recordConsent(deliverCall.uuid, message.target_lang);
+  store.setMessageState(message.id, "sent");
+  publishMessageUpdate(store.getMessage(message.id)!);
+  captureStates.delete(uuid);
+  return sentConfirmationNcco();
+}
+
 export async function handleReadbackInput(store: Store, uuid: string, body: InputBody) {
   const state = captureStates.get(uuid);
   if (!state?.messageId) return callAgainNcco();
   const message = store.getMessage(state.messageId)!;
   const digit = dtmfDigits(body);
+  const flagged = message.flags !== "[]";
 
   if (digit === "1") {
-    const worker = store.getPerson(message.to_person_id)!;
-    const manager = store.getPerson(message.from_person_id)!;
-    if (!worker.phone) {
-      store.setMessageState(message.id, "failed");
-      publishMessageUpdate(store.getMessage(message.id)!);
-      return sentConfirmationNcco();
+    if (flagged && !state.flaggedSendConfirmed) {
+      return confirmFlaggedSendNcco(message.back_translation ?? "");
     }
-    const deliverCall = await placeDeliverCall({
-      toPhone: worker.phone,
-      senderName: manager.name,
-      targetLang: message.target_lang as SupportedLanguage,
-      targetText: message.target_text!,
-    });
-    store.createCall({
-      uuid: deliverCall.uuid,
-      message_id: message.id,
-      direction: "outbound",
-      leg: "deliver",
-      status: "started",
-    });
-    store.recordConsent(deliverCall.uuid, message.target_lang);
-    store.setMessageState(message.id, "sent");
-    publishMessageUpdate(store.getMessage(message.id)!);
-    captureStates.delete(uuid);
-    return sentConfirmationNcco();
+    return sendMessage(store, uuid, message);
   }
 
   if (digit === "2") {
@@ -318,7 +359,28 @@ export async function handleReadbackInput(store: Store, uuid: string, body: Inpu
   }
 
   if (digit === "3") {
-    return previewTargetLanguageNcco(message.target_text ?? "", message.back_translation ?? "", message.flags !== "[]");
+    return previewTargetLanguageNcco(message.target_text ?? "", message.back_translation ?? "", flagged);
+  }
+
+  return noSilenceCaughtNcco();
+}
+
+// --- capture leg: second confirmation for a flagged translation (F2 / T-01) --
+
+export async function handleConfirmFlaggedInput(store: Store, uuid: string, body: InputBody) {
+  const state = captureStates.get(uuid);
+  if (!state?.messageId) return callAgainNcco();
+  const message = store.getMessage(state.messageId)!;
+  const digit = dtmfDigits(body);
+
+  if (digit === "1") {
+    state.flaggedSendConfirmed = true;
+    return sendMessage(store, uuid, message);
+  }
+
+  if (digit === "2") {
+    const worker = store.getPerson(message.to_person_id)!;
+    return captureMessageNcco(worker.name);
   }
 
   return noSilenceCaughtNcco();
@@ -390,6 +452,13 @@ export async function handleMachineDetectionEvent(
   const call = store.getCall(uuid);
   if (!call?.message_id) return null;
   const message = store.getMessage(call.message_id)!;
+  // Guard against re-firing: a call can report both beep_start and
+  // beep_timeout, and each is its own event, so without this check both would
+  // independently transition the message and each schedule its own retry —
+  // ringing the worker twice for one voicemail. Only "sent" -> "left on
+  // voicemail" is a valid transition; a second AMD event for the same call
+  // finds the message already past "sent" and is treated as a no-op.
+  if (message.state !== "sent") return null;
   const manager = store.getPerson(message.from_person_id)!;
 
   store.setMessageState(message.id, "left on voicemail");
@@ -405,19 +474,31 @@ export async function handleMachineDetectionEvent(
 
 function scheduleDeliverRetry(store: Store, messageId: number): void {
   setTimeout(async () => {
-    const message = store.getMessage(messageId);
-    if (!message || message.state !== "left on voicemail") return;
-    const worker = store.getPerson(message.to_person_id)!;
-    const manager = store.getPerson(message.from_person_id)!;
-    if (!worker.phone) return;
-    const call = await placeDeliverCall({
-      toPhone: worker.phone,
-      senderName: manager.name,
-      targetLang: message.target_lang as SupportedLanguage,
-      targetText: message.target_text ?? "",
-    });
-    store.createCall({ uuid: call.uuid, message_id: messageId, direction: "outbound", leg: "deliver", status: "started" });
-    store.recordConsent(call.uuid, message.target_lang);
+    try {
+      const message = store.getMessage(messageId);
+      if (!message || message.state !== "left on voicemail") return;
+      const worker = store.getPerson(message.to_person_id)!;
+      const manager = store.getPerson(message.from_person_id)!;
+      if (!worker.phone) return;
+      const call = await placeDeliverCall({
+        toPhone: worker.phone,
+        senderName: manager.name,
+        targetLang: message.target_lang as SupportedLanguage,
+        targetText: message.target_text ?? "",
+      });
+      store.createCall({ uuid: call.uuid, message_id: messageId, direction: "outbound", leg: "deliver", status: "started" });
+      store.recordConsent(call.uuid, message.target_lang);
+    } catch (error) {
+      // The single Node process backing the whole demo must survive a failed
+      // retry (e.g. a rejected outbound call) — degrade this one message
+      // instead of leaving an unhandled rejection that can crash the process.
+      console.error(`Voicemail retry failed for message ${messageId}:`, error);
+      const message = store.getMessage(messageId);
+      if (message && message.state === "left on voicemail") {
+        store.setMessageState(messageId, "failed");
+        publishMessageUpdate(store.getMessage(messageId)!);
+      }
+    }
   }, RETRY_DELAY_MS).unref();
 }
 

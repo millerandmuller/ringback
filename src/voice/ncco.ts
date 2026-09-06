@@ -35,6 +35,16 @@ const RECORDING_NOTICE: Record<SupportedLanguage, string> = {
   "es-US": "Esta llamada se graba.",
 };
 
+/** "Ringback. Message from X: ..." fully localized — every word of it is spoken
+ *  in the target-language talk action, never English words inside an es-US voice. */
+function messageAnnouncement(senderName: string, targetLang: SupportedLanguage, targetText: string): string {
+  const templates: Record<SupportedLanguage, string> = {
+    "en-US": `Ringback. Message from ${senderName}: ${targetText}`,
+    "es-US": `Ringback. Mensaje de ${senderName}: ${targetText}`,
+  };
+  return templates[targetLang];
+}
+
 function talk(text: string, language: SupportedLanguage, bargeIn = false): TalkAction {
   return { action: NCCOActions.TALK, text, language, bargeIn };
 }
@@ -177,6 +187,27 @@ export function readbackNcco(backTranslation: string, flagged: boolean): Ncco {
   ];
 }
 
+/**
+ * A flagged translation blocks an immediate send (F2 / dossier T-01): the first
+ * press of 1 on a flagged read-back leads here instead of dialing, asking for a
+ * second, explicit confirmation before anything goes out.
+ */
+export function confirmFlaggedSendNcco(backTranslation: string): Ncco {
+  return [
+    talk(
+      `Please check this one again: ${backTranslation}. Press 1 to confirm and send, or 2 to record again.`,
+      "en-US",
+      true,
+    ),
+    {
+      action: NCCOActions.INPUT,
+      type: ["dtmf"],
+      dtmf: { maxDigits: 1, timeOut: 8 },
+      eventUrl: eventUrl("/voice/input/confirm-flagged"),
+    },
+  ];
+}
+
 /** Press 3: play the outgoing Spanish text, then return to the same 1/2/3 prompt. */
 export function previewTargetLanguageNcco(targetText: string, backTranslation: string, flagged: boolean): Ncco {
   return [talk(targetText, "es-US"), ...readbackNcco(backTranslation, flagged)];
@@ -246,7 +277,7 @@ export function deliverNcco(input: {
   };
   return [
     talk(notice, input.targetLang),
-    talk(`Ringback. Message from ${input.senderName}: ${input.targetText}`, input.targetLang),
+    talk(messageAnnouncement(input.senderName, input.targetLang, input.targetText), input.targetLang),
     talk(instructionByLang[input.targetLang], input.targetLang, true),
     {
       action: NCCOActions.INPUT,
@@ -263,7 +294,7 @@ export function voicemailNcco(input: { senderName: string; targetLang: Supported
   const notice = RECORDING_NOTICE[input.targetLang];
   return [
     talk(notice, input.targetLang),
-    talk(`Ringback. Message from ${input.senderName}: ${input.targetText}`, input.targetLang),
+    talk(messageAnnouncement(input.senderName, input.targetLang, input.targetText), input.targetLang),
   ];
 }
 
