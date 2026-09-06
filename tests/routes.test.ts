@@ -1,3 +1,4 @@
+import type { TranslationResult } from "../src/translate.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Fastify, { type FastifyInstance } from "fastify";
 import { openDb, Store } from "../src/db/store.js";
@@ -205,7 +206,7 @@ describe("flagged translation blocks immediate send (F2 / dossier T-01)", () => 
     ({ app, store } = await buildApp());
   });
 
-  async function driveToReadback(flags: string[]) {
+  async function driveToReadback(flags: TranslationResult["flags"]) {
     vi.mocked(translateWithDeadline).mockImplementation(async (_input, _deadline, onSettled) => {
       const result = {
         ok: true as const,
@@ -234,7 +235,7 @@ describe("flagged translation blocks immediate send (F2 / dossier T-01)", () => 
   }
 
   it("press 1 on a flagged read-back asks for confirmation instead of sending", async () => {
-    await driveToReadback(["ambiguous negation"]);
+    await driveToReadback(["dropped_negation"]);
 
     const firstPress = await app.inject({
       method: "POST",
@@ -249,7 +250,7 @@ describe("flagged translation blocks immediate send (F2 / dossier T-01)", () => 
   });
 
   it("a second press of 1 (via the confirm route) actually sends", async () => {
-    await driveToReadback(["ambiguous negation"]);
+    await driveToReadback(["dropped_negation"]);
     await app.inject({
       method: "POST",
       url: "/voice/input/readback",

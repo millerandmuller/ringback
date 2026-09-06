@@ -14,7 +14,11 @@ const TranslationSchema = z.object({
   translation: z.string(),
   back_translation: z.string(),
   target_lang: z.string(),
-  flags: z.array(z.string()),
+  // Flags are problem codes only (deterministic gate: any flag forces a second confirmation
+  // before sending). Things that were preserved correctly are NOT flags; they belong in notes.
+  flags: z.array(
+    z.enum(["dropped_negation", "untranslated_term", "uncertain_number_or_time", "low_confidence"]),
+  ),
   notes: z.string(),
 });
 
@@ -30,11 +34,15 @@ Rules:
   summarize, or add pleasantries.
 - Also produce a back-translation: translate your own translation back into the source
   language, so the sender can verify what will actually be said before it is spoken aloud.
-- If the translation is ambiguous, idiomatic, uncertain, or touches a safety-critical
-  instruction (a negation, a chemical name, a quantity, a deadline), add one short flag string
-  per concern to "flags". If there is nothing to flag, return an empty array.
-- "notes" is one short sentence for a human reviewer, or an empty string if there is nothing
-  to add.
+- "flags" lists PROBLEMS only, using these codes: "dropped_negation" (a negation could not be
+  preserved exactly), "untranslated_term" (a product, chemical or proper name had to be left in
+  the source language or is uncertain), "uncertain_number_or_time" (a number, room, quantity or
+  time could be misread in the target language in a way it could not be in the source),
+  "low_confidence" (you are not confident the meaning survives). Do NOT flag things you
+  preserved correctly, and do not flag an ambiguity that exists identically in the source text.
+  For a clean, faithful translation return an empty array — that is the normal case.
+- "notes" is one short sentence for a human reviewer (this is where "negation preserved" or a
+  regional word choice belongs), or an empty string if there is nothing to add.
 - Never add commentary, greetings, or explanation inside "translation" or "back_translation"
   themselves — only the exact spoken content.`;
 
