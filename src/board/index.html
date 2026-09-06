@@ -50,6 +50,29 @@
       opacity: 0.5;
       cursor: default;
     }
+    #keypad {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+      margin-top: 0.5rem;
+    }
+    #keypad button {
+      font: inherit;
+      padding: 0.45rem 0.8rem;
+      border: 1px solid #cfd4d3;
+      border-radius: 6px;
+      background: #fff;
+      color: #1d2b2a;
+      cursor: pointer;
+    }
+    #keypad button[data-digit="1"] {
+      border-color: #1d6b5e;
+      color: #1d6b5e;
+      font-weight: 600;
+    }
+    #keypad button:active {
+      background: #f1f4f3;
+    }
     #call-status {
       font-size: 13px;
       color: var(--muted);
@@ -151,6 +174,13 @@
     <div>
       <button id="call">Call the inbox</button>
       <div id="call-status"></div>
+      <!-- In-call keypad: the read-back asks for a digit, and a browser call has no phone keypad. -->
+      <div id="keypad" hidden>
+        <button data-digit="1" title="Send">1 · Send</button>
+        <button data-digit="2" title="Record again">2 · Record again</button>
+        <button data-digit="3" title="Hear it in the recipient's language">3 · Hear it</button>
+        <button id="hangup" title="Hang up">Hang up</button>
+      </div>
     </div>
   </header>
   <main>

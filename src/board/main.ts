@@ -163,25 +163,67 @@ function connectEvents(): void {
 
 async function setUpCallButton(): Promise<void> {
   const client = new VonageClient();
+  const keypad = document.querySelector<HTMLDivElement>("#keypad")!;
+  const hangupButton = document.querySelector<HTMLButtonElement>("#hangup")!;
+  let activeCallId: string | null = null;
+
+  // A browser call has no phone keypad, but the read-back and the flagged-send gate ask
+  // for a digit — the on-screen keypad sends real DTMF into the live call.
+  const showKeypad = (visible: boolean) => {
+    keypad.hidden = !visible;
+  };
+  keypad.querySelectorAll<HTMLButtonElement>("button[data-digit]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!activeCallId) return;
+      try {
+        await client.sendDTMF(activeCallId, button.dataset.digit!);
+        callStatusEl.textContent = `Sent ${button.dataset.digit}.`;
+      } catch (error) {
+        console.error(error);
+        callStatusEl.textContent = "Keypress failed. Check the console.";
+      }
+    });
+  });
+  hangupButton.addEventListener("click", async () => {
+    if (!activeCallId) return;
+    try {
+      await client.hangup(activeCallId);
+    } catch (error) {
+      console.error(error);
+    }
+  });
 
   client.on("callInvite", async (callId: string) => {
     // The ring-back leg calls the manager's app user directly; answer it
     // automatically so the reply is heard without an extra click.
+    activeCallId = callId;
+    callStatusEl.textContent = "Reply coming in...";
     await client.answer(callId);
+  });
+
+  client.on("callHangup", (callId: string) => {
+    if (callId !== activeCallId) return;
+    activeCallId = null;
+    showKeypad(false);
+    callStatusEl.textContent = "Call ended.";
+    callButton.disabled = false;
   });
 
   callButton.addEventListener("click", async () => {
     callButton.disabled = true;
     callStatusEl.textContent = "Connecting...";
     try {
-      const { token } = await fetch("/api/session-jwt").then((r) => r.json());
+      const { token, apiUrl } = await fetch("/api/session-jwt").then((r) => r.json());
+      // Point the SDK at the account's home region: the generic host redirects, and a
+      // redirect inside a CORS request surfaces as "Failed to fetch" on serverCall().
+      if (apiUrl) client.setConfig({ apiUrl });
       await client.createSession(token);
-      await client.serverCall();
-      callStatusEl.textContent = "On the call.";
+      activeCallId = await client.serverCall();
+      showKeypad(true);
+      callStatusEl.textContent = "On the call. Press 1 to send when you hear the read-back.";
     } catch (error) {
       console.error(error);
       callStatusEl.textContent = "Call failed. Check the console.";
-    } finally {
       callButton.disabled = false;
     }
   });
