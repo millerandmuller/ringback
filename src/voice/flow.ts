@@ -346,6 +346,12 @@ export async function handleReadbackInput(store: Store, uuid: string, body: Inpu
   const digit = dtmfDigits(body);
   const flagged = message.flags !== "[]";
 
+  // Vonage can deliver the same input webhook twice within a second; a second "1"
+  // must never place a second delivery call.
+  if (digit === "1" && message.state !== "draft") {
+    return sentConfirmationNcco();
+  }
+
   if (digit === "1") {
     if (flagged && !state.flaggedSendConfirmed) {
       return confirmFlaggedSendNcco(message.back_translation ?? "");

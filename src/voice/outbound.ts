@@ -23,6 +23,8 @@ export async function placeDeliverCall(input: {
     advancedMachineDetection: {
       behavior: MachineDetectionBehavior.CONTINUE,
       mode: AdvancedMachineDetectionMode.DETECTBEEP,
+      // Vonage rejects the call without it ("should be 30 <= beep_timeout <= 120").
+      beepTimeout: 45,
     },
   });
   return { uuid: call.uuid };
