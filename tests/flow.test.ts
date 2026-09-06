@@ -126,3 +126,84 @@ describe("unsupported language stops before dialing (T-04)", () => {
     expect(messages[0].state).toBe("unsupported language");
   });
 });
+
+describe("name capture survives what the recogniser actually returns", () => {
+  let store: Store;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    store = freshStore();
+    store.insertPerson({ name: "Lutfiya", language: "en-US", phone: null, app_user: "manager" });
+    store.insertPerson({ name: "Marisol", language: "es-US", phone: "12015550111", app_user: null });
+    flow.handleAnswer(store, { uuid: "capture-uuid", conversation_uuid: "capture-uuid" });
+  });
+
+  it("resolves the recipient from a mangled alternative instead of falling to the keypad", () => {
+    const ncco = flow.handleNameInput(store, "capture-uuid", {
+      speech: { results: [{ text: "Mary Sol", confidence: "0.71" }] },
+    });
+    const talk = (ncco as any[]).find((action) => action.action === "talk");
+    expect(talk.text).toContain("Message for Marisol");
+  });
+
+  it("reads past the first alternative to find the name", () => {
+    const ncco = flow.handleNameInput(store, "capture-uuid", {
+      speech: {
+        results: [
+          { text: "merry soul", confidence: "0.55" },
+          { text: "Marisol", confidence: "0.51" },
+        ],
+      },
+    });
+    const talk = (ncco as any[]).find((action) => action.action === "talk");
+    expect(talk.text).toContain("Message for Marisol");
+  });
+
+  it("keeps the directory hints on the re-prompt, which is where a second miss comes from", () => {
+    const ncco = flow.handleNameInput(store, "capture-uuid", {
+      speech: { results: [{ text: "the weather is fine", confidence: "0.9" }] },
+    });
+    const input = (ncco as any[]).find((action) => action.action === "input");
+    expect(input.speech.context).toEqual(["Marisol"]);
+  });
+});
+
+describe("the deliver leg never ends on silence without asking again", () => {
+  let store: Store;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    store = freshStore();
+    const manager = store.insertPerson({ name: "Lutfiya", language: "en-US", phone: null, app_user: "manager" });
+    const worker = store.insertPerson({ name: "Marisol", language: "es-US", phone: "12015550111", app_user: null });
+    const message = store.createMessage({
+      from_person_id: manager.id,
+      to_person_id: worker.id,
+      source_text: "Room 412 is a rush.",
+      source_lang: "en-US",
+      target_lang: "es-US",
+    });
+    store.setMessageState(message.id, "sent");
+    store.createCall({ uuid: "deliver-uuid", message_id: message.id, direction: "outbound", leg: "deliver", status: "answered" });
+  });
+
+  it("re-prompts in the worker's language when nothing was captured", async () => {
+    const ncco = await flow.handleReplyInput(store, { uuid: "deliver-uuid" });
+    const talk = (ncco as any[]).find((action) => action.action === "talk");
+    expect(talk.language).toBe("es-US");
+    expect(talk.text).toContain("Marca 1");
+    const input = (ncco as any[]).find((action) => action.action === "input");
+    expect(input.type).toEqual(["dtmf", "speech"]);
+  });
+
+  it("asks only once, so a redelivered empty webhook cannot loop the call", async () => {
+    expect(await flow.handleReplyInput(store, { uuid: "deliver-uuid" })).not.toBeNull();
+    expect(await flow.handleReplyInput(store, { uuid: "deliver-uuid" })).toBeNull();
+  });
+
+  it("still accepts the digit after the second prompt", async () => {
+    await flow.handleReplyInput(store, { uuid: "deliver-uuid" });
+    await flow.handleReplyInput(store, { uuid: "deliver-uuid", dtmf: { digits: "1" } });
+    expect(store.listMessages()[0].state).toBe("understood");
+  });
+});

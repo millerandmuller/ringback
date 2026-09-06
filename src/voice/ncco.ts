@@ -28,7 +28,7 @@ interface FixedInputAction {
   eventMethod?: string;
 }
 
-type Ncco = Array<TalkAction | FixedInputAction | RecordActionWithTranscription>;
+export type Ncco = Array<TalkAction | FixedInputAction | RecordActionWithTranscription>;
 
 const RECORDING_NOTICE: Record<SupportedLanguage, string> = {
   "en-US": "This call is recorded.",
@@ -53,18 +53,26 @@ function eventUrl(path: string): string[] {
   return [`${config.serverBaseUrl}${path}`];
 }
 
+function nameInputSettings(directoryNames: string[]): FixedSpeechSettings {
+  return {
+    language: "en-US",
+    // The directory is the entire vocabulary of this prompt; without the hints an
+    // en-US recogniser turns "Marisol" into "Mary Sol" and the caller lands on the
+    // keypad fallback (seen on every test call).
+    context: directoryNames,
+    endOnSilence: 1.5,
+    startTimeout: 8,
+    maxDuration: 6,
+  };
+}
+
 function askWhoForNcco(directoryNames: string[]): Ncco {
   return [
     talk("Ringback. Who is this for?", "en-US", true),
     {
       action: NCCOActions.INPUT,
       type: ["speech"],
-      speech: {
-        language: "en-US",
-        context: directoryNames,
-        endOnSilence: 1.5,
-        maxDuration: 6,
-      },
+      speech: nameInputSettings(directoryNames),
       eventUrl: eventUrl("/voice/input/name"),
     },
   ];
@@ -97,13 +105,13 @@ export function afterConsentNcco(directoryNames: string[]): Ncco {
 }
 
 /** Re-prompt once when the spoken name did not resolve to a directory entry. */
-export function reprompNameNcco(): Ncco {
+export function reprompNameNcco(directoryNames: string[]): Ncco {
   return [
     talk("I could not understand that. Please say the name again.", "en-US", true),
     {
       action: NCCOActions.INPUT,
       type: ["speech"],
-      speech: { language: "en-US", endOnSilence: 1.5, maxDuration: 6 },
+      speech: nameInputSettings(directoryNames),
       eventUrl: eventUrl("/voice/input/name-retry"),
     },
   ];
@@ -128,11 +136,11 @@ export function nameKeypadListNcco(directoryNames: string[]): Ncco {
 /** Capture leg, step 2: prompt for the message itself, speech first, record as fallback. */
 export function captureMessageNcco(recipientName: string): Ncco {
   return [
-    talk(`Message for ${recipientName}. Speak after the tone.`, "en-US", true),
+    talk(`Message for ${recipientName}. Say your message now.`, "en-US", true),
     {
       action: NCCOActions.INPUT,
       type: ["speech"],
-      speech: { language: "en-US", endOnSilence: 2, maxDuration: 30, saveAudio: true },
+      speech: { language: "en-US", endOnSilence: 2, startTimeout: 10, maxDuration: 30, saveAudio: true },
       eventUrl: eventUrl("/voice/input/message"),
     },
   ];
@@ -145,7 +153,7 @@ export function retryMessageNcco(): Ncco {
     {
       action: NCCOActions.INPUT,
       type: ["speech"],
-      speech: { language: "en-US", endOnSilence: 2, maxDuration: 30, saveAudio: true },
+      speech: { language: "en-US", endOnSilence: 2, startTimeout: 10, maxDuration: 30, saveAudio: true },
       eventUrl: eventUrl("/voice/input/message-retry"),
     },
   ];
@@ -264,6 +272,45 @@ export function unsupportedLanguageNcco(explanation: string): Ncco {
   ];
 }
 
+/** Hints for the reply recogniser: shift vocabulary, the words a confirmation or a
+ *  refusal actually starts with, and the room numbers of the demo floor. */
+const REPLY_CONTEXT: Record<SupportedLanguage, string[]> = {
+  "en-US": ["understood", "got it", "okay", "yes", "no", "I can't", "not yet", "still", "room", "guests", "later"],
+  "es-US": [
+    "entendido",
+    "entiendo",
+    "listo",
+    "de acuerdo",
+    "sí",
+    "no puedo",
+    "todavía",
+    "ahorita",
+    "habitación",
+    "huéspedes",
+    "más tarde",
+  ],
+};
+
+/** The worker is on a plain phone in a corridor and pauses mid-sentence; two seconds
+ *  of silence cut both test replies off in the middle ("la 400 y todavía tiene").
+ *  Four seconds is the difference between a fragment and a sentence. */
+function replyInputSettings(targetLang: SupportedLanguage): FixedSpeechSettings {
+  return {
+    language: targetLang,
+    context: REPLY_CONTEXT[targetLang],
+    endOnSilence: 4,
+    startTimeout: 10,
+    maxDuration: 30,
+    saveAudio: true,
+  };
+}
+
+const REPLY_INSTRUCTION: Record<SupportedLanguage, string> = {
+  // No tone is played before an input action, so neither language promises one.
+  "en-US": "Press 1 if you understood, or say your answer now.",
+  "es-US": "Marca 1 si entendiste, o di tu respuesta ahora.",
+};
+
 /** Deliver leg: recording notice + message in the worker's language, then dtmf-or-speech reply capture. */
 export function deliverNcco(input: {
   senderName: string;
@@ -271,19 +318,38 @@ export function deliverNcco(input: {
   targetText: string;
 }): Ncco {
   const notice = RECORDING_NOTICE[input.targetLang];
-  const instructionByLang: Record<SupportedLanguage, string> = {
-    "en-US": "Press 1 if you understood, or speak your response after the tone.",
-    "es-US": "Marca 1 si entendiste, o habla tu respuesta después del tono.",
-  };
   return [
     talk(notice, input.targetLang),
     talk(messageAnnouncement(input.senderName, input.targetLang, input.targetText), input.targetLang),
-    talk(instructionByLang[input.targetLang], input.targetLang, true),
+    talk(REPLY_INSTRUCTION[input.targetLang], input.targetLang, true),
     {
       action: NCCOActions.INPUT,
       type: ["dtmf", "speech"],
       dtmf: { maxDigits: 1, timeOut: 20 },
-      speech: { language: input.targetLang, endOnSilence: 2, maxDuration: 20, saveAudio: true },
+      speech: replyInputSettings(input.targetLang),
+      eventUrl: eventUrl("/voice/input/reply"),
+    },
+  ];
+}
+
+/**
+ * The worker said something the recogniser could not use — in testing, an
+ * English word spoken into the Spanish recogniser came back empty and the call
+ * simply ended, leaving her believing she had answered and the board stuck on
+ * "sent". Ask once more instead of hanging up on her.
+ */
+export function replyNotCaughtNcco(targetLang: SupportedLanguage): Ncco {
+  const prompt: Record<SupportedLanguage, string> = {
+    "en-US": "I did not catch that. Press 1 if you understood, or say your answer now.",
+    "es-US": "No entendí. Marca 1 si entendiste, o di tu respuesta ahora.",
+  };
+  return [
+    talk(prompt[targetLang], targetLang, true),
+    {
+      action: NCCOActions.INPUT,
+      type: ["dtmf", "speech"],
+      dtmf: { maxDigits: 1, timeOut: 20 },
+      speech: replyInputSettings(targetLang),
       eventUrl: eventUrl("/voice/input/reply"),
     },
   ];

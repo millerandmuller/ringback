@@ -2,6 +2,7 @@ import type { Message, Store } from "../db/store.js";
 import { isSupportedLanguage, unsupportedLanguageExplanation, type SupportedLanguage } from "../languages.js";
 import { translateMessage, translateWithDeadline, type TranslateOutcome } from "../translate.js";
 import { publishMessageUpdate } from "../events.js";
+import { matchDirectoryName } from "../name-match.js";
 import { fetchTranscriptionText } from "./transcription.js";
 import { placeDeliverCall, placeRingbackCall } from "./outbound.js";
 import { vonage } from "./client.js";
@@ -17,6 +18,7 @@ import {
   noSilenceCaughtNcco,
   previewTargetLanguageNcco,
   readbackNcco,
+  replyNotCaughtNcco,
   reprompNameNcco,
   retryMessageNcco,
   sentConfirmationNcco,
@@ -27,6 +29,7 @@ import {
   unsupportedLanguageNcco,
   voicemailNcco,
 } from "./ncco.js";
+import type { Ncco } from "./ncco.js";
 
 // Live per-call scratch state. It only needs to survive the length of one phone
 // call — if the process restarts mid-call the call itself drops, so losing this
@@ -58,6 +61,12 @@ function speechText(body: InputBody): { text: string; confidence: number } | nul
   const result = body.speech?.results?.[0];
   if (!result?.text) return null;
   return { text: result.text, confidence: Number(result.confidence ?? "0") };
+}
+
+/** Every alternative the recogniser offered, best first. Name resolution reads
+ *  all of them: the directory name is often not in the top result. */
+function speechAlternatives(body: InputBody): string[] {
+  return (body.speech?.results ?? []).map((result) => result.text).filter(Boolean);
 }
 
 function dtmfDigits(body: InputBody): string | null {
@@ -100,28 +109,35 @@ export function handleConsentGateInput(store: Store, uuid: string, body: InputBo
 
 // --- capture leg: name resolution (3 attempts) ---------------------------
 
-function resolveRecipient(store: Store, state: CaptureState, spokenName: string | undefined) {
-  const person = spokenName ? store.findPersonByName(spokenName) : undefined;
-  return person && person.id !== state.managerId ? person : undefined;
+function resolveRecipient(store: Store, state: CaptureState, alternatives: string[]) {
+  const directory = store
+    .listPeople()
+    .filter((person) => person.id !== state.managerId)
+    .map((person) => ({ entry: person, name: person.name }));
+  // Logged because a name miss is invisible afterwards: the webhook body is the
+  // only record of what the recogniser actually heard.
+  if (alternatives.length > 0) console.log("name alternatives:", JSON.stringify(alternatives));
+  return matchDirectoryName(alternatives, directory);
 }
 
 export function handleNameInput(store: Store, uuid: string, body: InputBody) {
   const state = captureStates.get(uuid);
   if (!state) return callAgainNcco();
 
-  const person = resolveRecipient(store, state, speechText(body)?.text);
+  const person = resolveRecipient(store, state, speechAlternatives(body));
   if (person) {
     state.recipientId = person.id;
     return captureMessageNcco(person.name);
   }
-  return reprompNameNcco();
+  const directoryNames = store.listPeople().filter((p) => p.id !== state.managerId).map((p) => p.name);
+  return reprompNameNcco(directoryNames);
 }
 
 export function handleNameRetryInput(store: Store, uuid: string, body: InputBody) {
   const state = captureStates.get(uuid);
   if (!state) return callAgainNcco();
 
-  const person = resolveRecipient(store, state, speechText(body)?.text);
+  const person = resolveRecipient(store, state, speechAlternatives(body));
   if (person) {
     state.recipientId = person.id;
     return captureMessageNcco(person.name);
@@ -406,11 +422,11 @@ export async function handleUnsupportedOfferInput(store: Store, uuid: string, bo
 
 // --- deliver leg: reply capture -------------------------------------------
 
-export async function handleReplyInput(store: Store, body: InputBody & { uuid?: string }): Promise<void> {
+export async function handleReplyInput(store: Store, body: InputBody & { uuid?: string }): Promise<Ncco | null> {
   const uuid = body.uuid;
-  if (!uuid) return;
+  if (!uuid) return null;
   const call = store.getCall(uuid);
-  if (!call?.message_id) return;
+  if (!call?.message_id) return null;
   const message = store.getMessage(call.message_id)!;
   const worker = store.getPerson(message.to_person_id)!;
 
@@ -418,7 +434,7 @@ export async function handleReplyInput(store: Store, body: InputBody & { uuid?: 
   if (digit === "1") {
     store.setMessageState(message.id, "understood");
     publishMessageUpdate(store.getMessage(message.id)!);
-    return;
+    return null;
   }
 
   const spoken = speechText(body);
@@ -441,8 +457,16 @@ export async function handleReplyInput(store: Store, body: InputBody & { uuid?: 
       status: "started",
     });
     store.recordConsent(ringback.uuid, "en-US");
+    return null;
   }
-  // Silence after the tone: no state change, per the fallback table.
+
+  // Neither a digit nor usable speech. Ask once — the guard is the same
+  // processed_events table used for webhook dedupe, so a redelivered empty
+  // input can never turn into a second prompt or an endless loop.
+  if (store.markEventOnce(uuid, "reply-reprompt")) {
+    return replyNotCaughtNcco(message.target_lang as SupportedLanguage);
+  }
+  return null;
 }
 
 // --- deliver leg: machine detection / voicemail (F12) ---------------------

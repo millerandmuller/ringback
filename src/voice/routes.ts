@@ -161,7 +161,10 @@ export function registerVoiceRoutes(app: FastifyInstance, store: Store): void {
   app.post("/voice/input/reply", async (req, reply) => {
     const body = req.body as { uuid: string; timestamp?: string };
     if (!onceInput(store, body.uuid, "input:reply", body.timestamp)) return reply.code(200).send();
-    await handleReplyInput(store, req.body as any);
+    // An NCCO comes back only when nothing usable was captured: it re-prompts the
+    // worker instead of letting the call end silently on her.
+    const ncco = await handleReplyInput(store, req.body as any);
+    if (ncco) return reply.send(ncco);
     reply.code(200).send();
   });
 }
