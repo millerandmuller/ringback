@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ringback</title>
+  <style>
+    :root {
+      --ink: #1a1a1a;
+      --paper: #ffffff;
+      --line: #e2e2e2;
+      --muted: #6b6b6b;
+      --accent: #0f6e5c;
+      --accent-ink: #ffffff;
+      --warn: #b3491f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.5;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 28px 40px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      margin: 0;
+      letter-spacing: -0.01em;
+    }
+    button#call {
+      background: var(--accent);
+      color: var(--accent-ink);
+      border: none;
+      border-radius: 8px;
+      padding: 14px 28px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button#call:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    #call-status {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 8px;
+      text-align: right;
+    }
+    main {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 32px;
+      padding: 32px 40px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    section h2 {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin: 0 0 12px;
+    }
+    #directory {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    #directory li {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+    }
+    #directory .lang {
+      color: var(--muted);
+    }
+    #messages {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 18px 20px;
+    }
+    .card .route {
+      font-weight: 600;
+      font-size: 15px;
+    }
+    .card .lang-pair {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 2px;
+    }
+    .card .text {
+      margin-top: 12px;
+      font-size: 15px;
+    }
+    .card .text .label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-right: 6px;
+    }
+    .card details {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .card .state-row {
+      margin-top: 14px;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+    }
+    .state {
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .state.flagged { color: var(--warn); }
+    .timestamp {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    #empty-hint {
+      color: var(--muted);
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Ringback</h1>
+    <div>
+      <button id="call">Call the inbox</button>
+      <div id="call-status"></div>
+    </div>
+  </header>
+  <main>
+    <section>
+      <h2>Directory</h2>
+      <ul id="directory"></ul>
+    </section>
+    <section>
+      <h2>Messages</h2>
+      <ul id="messages"></ul>
+      <p id="empty-hint" hidden>No messages yet. Call the inbox to send one.</p>
+    </section>
+  </main>
+  <script type="module" src="/board.js"></script>
+</body>
+</html>

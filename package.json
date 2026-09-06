@@ -1,0 +1,40 @@
+{
+  "name": "ringback",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A voice inbox for crews that do not share a language. Every touch is a phone call.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "build": "esbuild src/server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --packages=external && esbuild src/board/main.ts --bundle --outfile=dist/public/board.js",
+    "seed": "tsx scripts/seed.ts",
+    "reset": "tsx scripts/reset.ts",
+    "m0-test-call": "tsx scripts/m0-test-call.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.0",
+    "@vonage/auth": "^1.18.0",
+    "@vonage/client-sdk": "^2.7.0",
+    "@vonage/jwt": "^1.17.0",
+    "@vonage/server-sdk": "^3.24.0",
+    "@vonage/vetch": "^1.14.0",
+    "@vonage/voice": "^1.24.0",
+    "better-sqlite3": "^11.10.0",
+    "fastify": "^5.6.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.19.4",
+    "typescript": "^5.6.3",
+    "vitest": "^5.0.0"
+  }
+}
