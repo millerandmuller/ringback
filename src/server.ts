@@ -13,7 +13,7 @@ const boardHtmlPath = join(__dirname, "board", "index.html");
 const boardJsPath = join(__dirname, "..", "dist", "public", "board.js");
 
 // Safety net: this one process backs webhooks, SSE and SQLite for the whole
-// demo (see project_brief.md Tech Stack — not serverless, on purpose). Every
+// demo (one long-lived process by design — not serverless). Every
 // background retry timer already catches its own errors, but this is a
 // second line of defense so an unforeseen rejection anywhere never takes the
 // process down mid-call.

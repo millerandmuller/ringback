@@ -8,12 +8,12 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "start": "node dist/server.js",
-    "build": "esbuild src/server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --packages=external && esbuild src/board/main.ts --bundle --outfile=dist/public/board.js",
-    "seed": "tsx scripts/seed.ts",
-    "reset": "tsx scripts/reset.ts",
-    "m0-test-call": "tsx scripts/m0-test-call.ts",
+    "dev": "tsx --env-file=.env watch src/server.ts",
+    "start": "node --env-file=.env dist/server.js",
+    "build": "esbuild src/server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --packages=external && esbuild src/board/main.ts --bundle --outfile=dist/public/board.js && mkdir -p dist/board && cp src/board/index.html dist/board/index.html",
+    "seed": "tsx --env-file=.env scripts/seed.ts",
+    "reset": "tsx --env-file=.env scripts/reset.ts",
+    "m0-test-call": "tsx --env-file=.env scripts/m0-test-call.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -27,7 +27,7 @@
     "@vonage/voice": "^1.24.0",
     "better-sqlite3": "^11.10.0",
     "fastify": "^5.6.1",
-    "zod": "^3.25.76"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

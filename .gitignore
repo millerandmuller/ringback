@@ -6,3 +6,5 @@ dist/
 private.key
 .DS_Store
 .examiner-tmp/
+*.db-shm
+*.db-wal
