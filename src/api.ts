@@ -12,17 +12,27 @@ function mintManagerSessionToken(): string {
     subject: MANAGER_APP_USER,
     ttl: SESSION_JWT_TTL_SECONDS,
     acl: {
+      // Vonage's standard Client SDK permission set: a browser call (serverCall) creates a
+      // leg and a device registration, not only a session — without "/*/legs/**" the
+      // call request is rejected.
       paths: {
         "/*/users/**": {},
         "/*/conversations/**": {},
         "/*/sessions/**": {},
+        "/*/devices/**": {},
+        "/*/image/**": {},
+        "/*/media/**": {},
+        "/*/applications/**": {},
+        "/*/push/**": {},
+        "/*/knocking/**": {},
+        "/*/legs/**": {},
       },
     },
   });
 }
 
 export function registerBoardRoutes(app: FastifyInstance, store: Store): void {
-  app.get("/api/session-jwt", async () => ({ token: mintManagerSessionToken() }));
+  app.get("/api/session-jwt", async () => ({ token: mintManagerSessionToken(), apiUrl: config.vonage.clientApiUrl }));
 
   app.get("/api/messages", async () => store.listMessages());
 
