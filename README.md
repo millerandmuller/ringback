@@ -1,21 +1,25 @@
 # Ringback
 
-Say it in your language; her phone rings in hers; you hear her answer in yours.
+The automated call that can listen.
 
-A voice inbox for crews that do not share a language, running on nothing but phone calls. The
-manager speaks into a browser, hears the back-translation read back and presses 1. The worker's
-plain phone rings and speaks the message in her language. She answers after the beep. The
-manager's line rings back in English and the board flips to "replied." No app on the worker's
-side, ever.
+Clinics, pharmacies and school districts already call people automatically. Those calls play a
+recording and count a keypress — press 1 to confirm, press 2 to cancel. There is no button for
+"I can't come Thursday, my ride fell through, can you do Friday?"
+
+Ringback is that call, made two-way, running on nothing but phone calls. You speak a message in
+the browser; the line reads the back-translation to you in your own language and waits for your
+permission; the recipient's ordinary phone rings and speaks it in hers; her spoken answer is
+translated and rings your browser back. No app, no login and no data plan on her side — the only
+address you need is a phone number.
 
 ## How it works
 
-1. Manager clicks **Call the inbox** in the browser (Vonage Client SDK, in-app call).
+1. You click **Call the inbox** in the browser (Vonage Client SDK, in-app call).
 2. The line asks who the message is for, then records the message (Vonage speech recognition).
 3. Claude translates it, and the line reads back the back-translation before anything is sent.
-4. Press 1: an outbound call rings the worker's phone and speaks the message in her language.
-5. She answers by keypad ("understood") or by voice — her reply is translated and rings the
-   manager's browser back.
+4. Press 1: an outbound call rings the recipient's phone and speaks the message in her language.
+5. She answers by keypad ("understood") or by voice — her reply is translated and rings your
+   browser back.
 
 Every step is a real Vonage Voice API primitive: speech input, text-to-speech in two languages,
 two outbound calls, DTMF, call recording with transcription, and an in-app call via the Client
@@ -42,7 +46,8 @@ Fill in `.env`:
   the Answer URL / Event URL configured on the Vonage application, both set to **POST**
   (`{SERVER_BASE_URL}/voice/answer` and `{SERVER_BASE_URL}/voice/event`).
 - `ANTHROPIC_API_KEY` — for the translation calls.
-- `DEMO_WORKER_PHONE` — the phone that plays "Marisol" in the demo (a real phone you control).
+- `DEMO_WORKER_PHONE` — the phone that plays the recipient, "Marisol", in the demo (a real phone
+  you control).
 - `M0_TEST_DESTINATION` — same number, used only by the M0 verification script below.
 
 ### 1. Verify the number can actually call out (M0)
@@ -63,7 +68,7 @@ private key, insufficient balance).
 npm run seed
 ```
 
-Creates the manager (you, in-app) and the seeded directory, including three curated,
+Creates the sender (you, in-app) and the seeded directory, including three curated,
 never-dialed entries used only for the Vision beat (`pt-BR`, `bn-IN`, `ht` — the last one
 demonstrates the honest unsupported-language stop).
 
