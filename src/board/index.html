@@ -6,209 +6,235 @@
   <title>Ringback</title>
   <style>
     :root {
-      --ink: #1a1a1a;
-      --paper: #ffffff;
-      --line: #e2e2e2;
-      --muted: #6b6b6b;
-      --accent: #0f6e5c;
+      --ink: #14201e;
+      --ink-soft: #3d4f4c;
+      --paper: #fbfaf7;
+      --card: #ffffff;
+      --line: #e4e2db;
+      --line-soft: #eeece6;
+      --muted: #6f7b78;
+      --accent: #0d5f50;
+      --accent-bright: #14806c;
       --accent-ink: #ffffff;
-      --warn: #b3491f;
+      --warn: #a8410f;
+      --warn-bg: #fdf1e9;
+      --shadow: 0 1px 2px rgba(20,32,30,.05), 0 8px 24px -12px rgba(20,32,30,.14);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       background: var(--paper);
       color: var(--ink);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-      font-size: 16px;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 17px;
       line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
     }
     header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 28px 40px 20px;
+      gap: 24px;
+      padding: 26px 44px 22px;
       border-bottom: 1px solid var(--line);
+      background: var(--card);
     }
+    .wordmark { display: flex; align-items: baseline; gap: 12px; }
     h1 {
-      font-size: 22px;
-      font-weight: 600;
+      font-size: 25px;
+      font-weight: 640;
       margin: 0;
-      letter-spacing: -0.01em;
+      letter-spacing: -0.022em;
+    }
+    .wordmark .tag {
+      font-size: 13px;
+      color: var(--muted);
+      letter-spacing: 0.01em;
     }
     button#call {
       background: var(--accent);
       color: var(--accent-ink);
       border: none;
-      border-radius: 8px;
-      padding: 14px 28px;
+      border-radius: 10px;
+      padding: 15px 30px;
+      font: inherit;
       font-size: 16px;
-      font-weight: 600;
+      font-weight: 620;
+      letter-spacing: -0.01em;
       cursor: pointer;
+      box-shadow: 0 1px 2px rgba(13,95,80,.28), 0 10px 20px -10px rgba(13,95,80,.55);
+      transition: background .15s ease, transform .1s ease;
     }
-    button#call:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
+    button#call:hover:not(:disabled) { background: var(--accent-bright); }
+    button#call:active:not(:disabled) { transform: translateY(1px); }
+    button#call:disabled { opacity: .45; cursor: default; box-shadow: none; }
     [hidden] { display: none !important; }
-    #keypad {
-      display: flex;
-      gap: 0.5rem;
-      justify-content: flex-end;
-      margin-top: 0.5rem;
-    }
+
+    #keypad { display: flex; gap: .5rem; justify-content: flex-end; margin-top: .6rem; }
     #keypad button {
       font: inherit;
-      padding: 0.45rem 0.8rem;
-      border: 1px solid #cfd4d3;
-      border-radius: 6px;
-      background: #fff;
-      color: #1d2b2a;
+      font-size: 14px;
+      padding: .5rem .9rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--card);
+      color: var(--ink-soft);
       cursor: pointer;
+      transition: border-color .15s ease, color .15s ease;
     }
     #keypad button[data-digit="1"] {
-      border-color: #1d6b5e;
-      color: #1d6b5e;
-      font-weight: 600;
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 640;
+      box-shadow: 0 0 0 3px rgba(13,95,80,.09);
     }
-    #keypad button:active {
-      background: #f1f4f3;
-    }
+    #keypad button:hover { border-color: var(--accent); color: var(--accent); }
+    #keypad button:active { background: #f2f5f4; }
+
+    /* The ring-back is the moment the whole demo is built around. It takes the
+       full width, it moves, and it does not let itself be mistaken for a toast. */
     #ringback-banner {
       display: flex;
       align-items: center;
-      gap: 16px;
-      padding: 18px 40px;
-      background: var(--accent);
+      gap: 18px;
+      padding: 20px 44px;
+      background: linear-gradient(96deg, var(--accent) 0%, var(--accent-bright) 100%);
       color: var(--accent-ink);
-      font-size: 20px;
-      font-weight: 600;
+      font-size: 21px;
+      font-weight: 640;
+      letter-spacing: -0.015em;
+      box-shadow: 0 10px 30px -10px rgba(13,95,80,.6);
     }
     #ringback-banner button {
       font: inherit;
       font-size: 16px;
-      border-radius: 8px;
+      font-weight: 620;
+      border-radius: 9px;
       border: none;
-      padding: 10px 22px;
+      padding: 11px 24px;
       cursor: pointer;
     }
-    #answer {
-      background: var(--accent-ink);
-      color: var(--accent);
-    }
-    #decline {
-      background: transparent;
-      color: var(--accent-ink);
-      border: 1px solid rgba(255, 255, 255, 0.6);
-    }
+    #answer { background: var(--accent-ink); color: var(--accent); }
+    #decline { background: rgba(255,255,255,.12); color: var(--accent-ink); border: 1px solid rgba(255,255,255,.5); }
     #ringback-who { flex: 1; }
     .ring-dot {
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
+      width: 15px; height: 15px; border-radius: 50%;
       background: var(--accent-ink);
+      box-shadow: 0 0 0 0 rgba(255,255,255,.7);
       animation: ring-pulse 1s ease-in-out infinite;
     }
     @keyframes ring-pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.35; transform: scale(0.75); }
+      0%   { opacity: 1;   transform: scale(1);   box-shadow: 0 0 0 0 rgba(255,255,255,.55); }
+      70%  { opacity: .5;  transform: scale(.82); box-shadow: 0 0 0 12px rgba(255,255,255,0); }
+      100% { opacity: 1;   transform: scale(1);   box-shadow: 0 0 0 0 rgba(255,255,255,0); }
     }
-    @media (prefers-reduced-motion: reduce) {
-      .ring-dot { animation: none; }
-    }
-    #call-status {
-      font-size: 13px;
-      color: var(--muted);
-      margin-top: 8px;
-      text-align: right;
-    }
+    @media (prefers-reduced-motion: reduce) { .ring-dot { animation: none; } }
+
+    #call-status { font-size: 13px; color: var(--muted); margin-top: 9px; text-align: right; }
+
     main {
       display: grid;
-      grid-template-columns: 260px 1fr;
-      gap: 32px;
-      padding: 32px 40px;
-      max-width: 1100px;
+      grid-template-columns: 268px 1fr;
+      gap: 40px;
+      padding: 36px 44px 64px;
+      max-width: 1140px;
       margin: 0 auto;
     }
     section h2 {
-      font-size: 13px;
+      font-size: 12px;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.09em;
       color: var(--muted);
-      margin: 0 0 12px;
+      font-weight: 640;
+      margin: 0 0 14px;
     }
-    #directory {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-    }
+    #directory { list-style: none; margin: 0; padding: 0; }
     #directory li {
-      padding: 10px 0;
-      border-bottom: 1px solid var(--line);
+      padding: 12px 14px;
+      border-radius: 9px;
       display: flex;
       justify-content: space-between;
-      font-size: 14px;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      border: 1px solid transparent;
     }
+    #directory li:nth-child(odd) { background: rgba(20,32,30,.028); }
     #directory .lang {
-      color: var(--muted);
-    }
-    #messages {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .card {
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 18px 20px;
-    }
-    .card .route {
-      font-weight: 600;
-      font-size: 15px;
-    }
-    .card .lang-pair {
-      color: var(--muted);
-      font-size: 13px;
-      margin-top: 2px;
-    }
-    .card .text {
-      margin-top: 12px;
-      font-size: 15px;
-    }
-    .card .text .label {
-      color: var(--muted);
-      font-size: 12px;
+      color: var(--ink-soft);
+      font-size: 11.5px;
+      font-weight: 620;
+      letter-spacing: .045em;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
-      margin-right: 6px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px 9px;
     }
-    .card details {
-      margin-top: 8px;
-      font-size: 13px;
+
+    #messages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }
+    .card {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      padding: 20px 24px 18px 26px;
+      background: var(--card);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    /* A colour rail keyed to the state, so the flip reads at half size on video. */
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 4px;
+      background: var(--line);
+    }
+    .card[data-state="delivered"]::before { background: #b9924a; }
+    .card[data-state="understood"]::before { background: var(--accent-bright); }
+    .card[data-state="replied"]::before    { background: var(--accent); width: 6px; }
+    .card[data-state="unsupported language"]::before { background: var(--warn); }
+    .card .route { font-weight: 640; font-size: 16px; letter-spacing: -0.012em; }
+    .card .lang-pair { color: var(--muted); font-size: 13px; margin-top: 3px; }
+    .card .text { margin-top: 13px; font-size: 16px; line-height: 1.45; }
+    .card .text .label {
+      display: inline-block;
       color: var(--muted);
+      font-size: 10.5px;
+      font-weight: 660;
+      text-transform: uppercase;
+      letter-spacing: 0.075em;
+      margin-right: 8px;
+      vertical-align: 1px;
     }
+    .card details { margin-top: 10px; font-size: 13.5px; color: var(--muted); }
+    .card details summary { cursor: pointer; }
     .card .state-row {
-      margin-top: 14px;
+      margin-top: 16px;
+      padding-top: 13px;
+      border-top: 1px solid var(--line-soft);
       display: flex;
-      align-items: baseline;
+      align-items: center;
       justify-content: space-between;
     }
+    /* The state is the product's one word. It gets to look like one. */
     .state {
-      font-weight: 600;
-      font-size: 14px;
+      font-weight: 660;
+      font-size: 13px;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      border-radius: 999px;
+      padding: 5px 13px;
+      background: rgba(20,32,30,.06);
+      color: var(--ink-soft);
     }
-    .state.flagged { color: var(--warn); }
-    .timestamp {
-      font-size: 12px;
-      color: var(--muted);
-    }
-    #empty-hint {
-      color: var(--muted);
-      font-size: 14px;
-    }
+    .state[data-state="delivered"]  { background: #f6efdf; color: #7a5c1c; }
+    .state[data-state="understood"] { background: #e2f0ec; color: var(--accent); }
+    .state[data-state="replied"]    { background: var(--accent); color: var(--accent-ink); }
+    .state[data-state="unsupported language"] { background: var(--warn-bg); color: var(--warn); }
+    .state.flagged { background: var(--warn-bg); color: var(--warn); }
+    .timestamp { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    #empty-hint { color: var(--muted); font-size: 15px; }
   </style>
 </head>
 <body>
@@ -222,7 +248,10 @@
   </div>
 
   <header>
-    <h1>Ringback</h1>
+    <div class="wordmark">
+      <h1>Ringback</h1>
+      <span class="tag">the automated call that can listen</span>
+    </div>
     <div>
       <button id="call">Call the inbox</button>
       <div id="call-status"></div>

@@ -76,6 +76,7 @@ function renderMessages(): void {
 
     const li = document.createElement("li");
     li.className = "card";
+    li.dataset.state = message.state;
 
     const route = document.createElement("div");
     route.className = "route";
@@ -122,6 +123,9 @@ function renderMessages(): void {
     stateRow.className = "state-row";
     const state = document.createElement("span");
     state.className = flags.length > 0 ? "state flagged" : "state";
+    // The state word is the thing that changes on screen, so it carries its own
+    // value for styling rather than being coloured by position.
+    state.dataset.state = message.state;
     state.textContent = message.state;
     const timestamp = document.createElement("span");
     timestamp.className = "timestamp";
