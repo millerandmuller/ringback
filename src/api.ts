@@ -36,7 +36,11 @@ export function registerBoardRoutes(app: FastifyInstance, store: Store): void {
 
   app.get("/api/messages", async () => store.listMessages());
 
-  app.get("/api/people", async () => store.listPeople());
+  // The board needs a name and a language per person, never the number. This
+  // endpoint is unauthenticated, so the number does not leave the server.
+  app.get("/api/people", async () =>
+    store.listPeople().map(({ phone: _phone, ...person }) => person),
+  );
 
   app.get("/events", async (_req, reply) => {
     subscribeSse(reply);

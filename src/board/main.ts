@@ -1,10 +1,10 @@
 import VonageClient from "@vonage/client-sdk";
 
+// Mirrors what /api/people returns: no phone number reaches the browser.
 interface Person {
   id: number;
   name: string;
   language: string;
-  phone: string | null;
   app_user: string | null;
 }
 
