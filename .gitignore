@@ -5,6 +5,6 @@ dist/
 .env
 private.key
 .DS_Store
-.examiner-tmp/
+*-tmp/
 *.db-shm
 *.db-wal

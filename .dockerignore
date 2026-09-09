@@ -8,6 +8,6 @@ private.key
 *.key
 *.db
 *.db-journal
-.examiner-tmp
+*-tmp
 tests
 .DS_Store
